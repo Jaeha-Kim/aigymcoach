@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gym Session Coach</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gym Coach">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="theme-color" content="#f0f0f0">
+
+<style>
+:root {
+  /* Flashcard-reviewer feel: centered toolbar of text links, a plain centered "card" (Arial 20px, centered) split by a rule into front/back, and a bottom answer bar of small rounded buttons with a caption above each. Follows system light/dark. */
+  --bg: #ffffff;
+  --chrome: #f0f0f0;
+  --line: #d4d4d4;
+  --ink: #1f1f1f;
+  --muted: #6b6b6b;
+  --btn: #fcfcfc;
+  --btn-line: #c4c4c4;
+  --hover: #e7eef9;
+  --blue: #1f6fd1;      /* "new" count */
+  --red: #c4302b;       /* "learn" count */
+  --green: #2e8b3e;     /* "due" count */
+  --card-font: Arial, Helvetica, sans-serif;
+  --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #2c2c2c; --chrome: #232323; --line: #444; --ink: #e6e6e6; --muted: #a3a3a3;
+    --btn: #3a3a3a; --btn-line: #555; --hover: #36414f; --blue: #6aa4f0; --red: #ef7a74; --green: #6cc480; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #2c2c2c; --chrome: #232323; --line: #444; --ink: #e6e6e6; --muted: #a3a3a3;
+  --btn: #3a3a3a; --btn-line: #555; --hover: #36414f; --blue: #6aa4f0; --red: #ef7a74; --green: #6cc480; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--ui-font); font-size: 16px; line-height: 1.45; overflow: hidden; -webkit-text-size-adjust: 100%; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button:disabled { opacity: .45; cursor: default; }
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); } .small { font-size: 14px; }
+.new { color: var(--blue); } .learn { color: var(--red); } .due { color: var(--green); }
+#fsBtn { display: none !important; }
+
+#app { height: 100%; display: grid; grid-template-rows: auto 1fr auto; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+
+/* Top toolbar */
+.toolbar { background: var(--chrome); border-bottom: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 6px 12px; }
+.tb-links { display: flex; gap: 2px; justify-content: center; flex-wrap: wrap; }
+.tb-link { background: none; border: 0; border-radius: 6px; padding: 6px 12px; font-size: 15px; color: var(--ink); }
+.tb-link:hover { background: var(--hover); }
+.tb-link.on { font-weight: 600; }
+.sync { justify-self: end; font-size: 12px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.dot.ok { background: var(--green); } .dot.busy { background: var(--blue); } .dot.err { background: var(--red); }
+
+.stage { overflow-y: auto; padding: 0 16px 24px; }
+.page { max-width: 640px; margin: 0 auto; padding-top: 22px; display: grid; gap: 14px; }
+.page.narrow { max-width: 520px; }
+.page.center { min-height: 100%; align-content: center; text-align: center; justify-items: center; }
+.center-text { text-align: center; }
+.title { font-family: var(--ui-font); font-size: 28px; font-weight: 600; margin: 0; }
+.section { font-size: 18px; font-weight: 600; margin: 10px 0 0; text-align: center; }
+p { margin: 0; }
+ol, ul { margin: 0; padding-left: 22px; display: grid; gap: 6px; }
+
+.input { background: var(--bg); border: 1px solid var(--btn-line); border-radius: 5px; padding: 6px 10px; font-size: 16px; }
+.input.sm { width: 90px; padding: 4px 8px; }
+.daterow { display: flex; justify-content: center; gap: 10px; align-items: center; }
+.linkbtn { background: none; border: 0; color: var(--blue); padding: 4px; }
+
+/* Deck list */
+table.decks, table.browse { width: 100%; border-collapse: collapse; }
+table.decks th { font-weight: 600; font-size: 14px; text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+table.decks td { padding: 9px 10px; }
+table.decks tr[data-open], table.decks tr[data-go], table.decks tr[id] { cursor: pointer; }
+table.decks tbody tr:hover { background: var(--hover); }
+table.decks tr.current { background: color-mix(in srgb, var(--blue) 10%, transparent); }
+.deckname { font-size: 17px; }
+.arrow { color: var(--muted); margin-right: 6px; }
+th.n, td.n { text-align: right; width: 64px; }
+table.browse th { font-weight: 600; font-size: 13px; text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); background: var(--chrome); }
+table.browse td { padding: 8px; border-bottom: 1px solid var(--line); font-size: 15px; }
+table.browse tr[data-jump] { cursor: pointer; } table.browse tbody tr:hover { background: var(--hover); }
+table.browse tr.current { background: color-mix(in srgb, var(--blue) 10%, transparent); }
+
+/* Deck overview */
+.ovcounts { margin: 4px auto; border-collapse: collapse; font-size: 17px; }
+.ovcounts td { padding: 2px 8px; text-align: left; } .ovcounts td:last-child { text-align: right; font-weight: 600; }
+.warm { text-align: left; width: 100%; border-top: 1px solid var(--line); padding-top: 10px; }
+.warm summary { cursor: pointer; color: var(--muted); font-size: 15px; text-align: center; }
+.warmitem { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; font-size: 15px; }
+
+/* Buttons (answer-bar style) */
+.abtn { background: var(--btn); border: 1px solid var(--btn-line); border-radius: 5px; padding: 8px 18px; font-size: 15px; min-width: 84px; box-shadow: 0 1px 1px rgba(0,0,0,.06); }
+.abtn:hover { background: var(--hover); }
+.abtn.primary { border-color: var(--blue); }
+.abtn.danger { border-color: var(--red); color: var(--red); }
+.abtn.wide { width: 100%; max-width: 320px; padding: 11px 18px; font-size: 16px; }
+
+/* Reviewer card */
+.revcounts { text-align: center; font-size: 15px; padding: 10px 0 0; font-weight: 600; }
+.revcounts .plus { color: var(--muted); font-weight: 400; }
+.card { max-width: 700px; margin: 0 auto; padding: 18px 8px 0; font-family: var(--card-font); font-size: 20px; text-align: center; }
+.deckpath { font-family: var(--ui-font); margin-bottom: 14px; }
+.q { font-size: 34px; line-height: 1.2; }
+.q2 { font-size: 26px; margin: 4px 0; }
+.qsub { margin-top: 8px; color: var(--muted); }
+hr#answer { border: 0; border-top: 1px solid var(--line); margin: 22px 0; }
+.back { display: grid; gap: 14px; justify-items: center; }
+.rec { font-size: 16px; color: var(--muted); }
+.rec.up { color: var(--green); } .rec.down { color: var(--red); }
+.cue { font-size: 18px; line-height: 1.5; max-width: 56ch; }
+.entry { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; }
+.ent { display: grid; gap: 6px; justify-items: center; }
+.lbl { font-family: var(--ui-font); font-size: 13px; color: var(--muted); }
+.stepper { display: flex; align-items: center; gap: 6px; }
+.stepper button { width: 46px; height: 46px; border-radius: 5px; border: 1px solid var(--btn-line); background: var(--btn); font-size: 22px; line-height: 1; }
+.stepper button:active { background: var(--hover); }
+.typeans { width: 120px; height: 52px; text-align: center; font-family: var(--card-font); font-size: 28px; border: 1px solid var(--btn-line); border-radius: 5px; background: var(--bg); }
+.clock { font-size: clamp(96px, 20vw, 170px); line-height: 1; margin: 6px 0 14px; }
+.restbar { height: 4px; background: var(--line); border-radius: 4px; max-width: 420px; margin: 0 auto; overflow: hidden; }
+.restbar > i { display: block; height: 100%; width: 0; background: var(--blue); }
+
+/* Bottom answer bar */
+.bottom { background: var(--chrome); border-top: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 10px; padding: 8px 14px calc(10px + env(safe-area-inset-bottom)); }
+.bb-mid { display: flex; gap: 8px; justify-content: center; }
+.bb-side.right { justify-self: end; }
+.ab { display: grid; justify-items: center; gap: 3px; }
+.ivl { font-size: 12px; color: var(--muted); min-height: 15px; }
+
+/* Stats */
+.lifts { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.lift { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; display: grid; gap: 2px; }
+.lift svg { width: 100%; height: 56px; }
+.weeks { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+.wk { display: grid; gap: 4px; }
+.wk .p { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+.pip { border: 1px solid var(--btn-line); border-radius: 4px; font-size: 11px; padding: 2px 0; background: var(--btn); color: var(--muted); }
+.pip.done { background: var(--green); border-color: var(--green); color: #fff; }
+.pip.part { border-color: var(--blue); color: var(--blue); }
+
+@media (max-width: 600px) {
+  .q { font-size: 28px; } .typeans { width: 96px; }
+  .abtn { min-width: 0; padding: 8px 12px; }
+  .bottom { grid-template-columns: auto 1fr auto; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="toolbar">
+    <div></div>
+    <nav class="tb-links" aria-label="Main">
+      <button class="tb-link on" data-nav="workouts">Workouts</button>
+      <button class="tb-link" data-nav="history">History</button>
+      <button class="tb-link" data-nav="body">Bodyweight</button>
+      <button class="tb-link" data-nav="rules">Rules</button>
+      <button class="tb-link" data-nav="more">More</button>
+    </nav>
+    <span class="sync"><span class="dot" id="syncDot"></span><span id="syncText">Connecting…</span><span id="fsBtn"></span></span>
+  </header>
+  <main class="stage" id="stage"></main>
+  <footer class="bottom" id="bottom" hidden></footer>
+</div>
+<script>
+(() => {
+"use strict";
+/* ===================== PROGRAM ===================== */
+// [code, name, baseSets, low, high, side, role, restSec, cue]
+const DAYS = {
+  ua: { name: "Upper A", focus: "Chest & back", lower: false, ex: [
+    ["A1","Incline DB press",3,6,10,"","first",90,"Bench 30–45°. Elbows ~45° from torso, deep stretch at the bottom, control the lowering."],
+    ["A2","Lat pulldown – heavy",3,6,8,"","",120,"Medium overhand grip. Chest up, drive elbows down and in, full stretch at the top."],
+    ["B1","Seated cable fly",3,10,12,"","",60,"Bring the elbows together, not just the hands. Keep elbows high."],
+    ["B2","Seated row machine – heavy",3,8,10,"","",90,"Let the shoulder blades stretch forward, then pull to the lower ribs."],
+    ["C1","Cable lateral raise",3,8,10,"arm","plus",45,"Pulley at hip height. Sweep out, not up. No shrugging."],
+    ["C2","Bayesian cable curl",3,10,12,"arm","plus",60,"Face away from the cable, arm behind you for a deep biceps stretch."],
+    ["D1","Overhead cable triceps extension",3,10,12,"","",60,"Rope, cable high. Deep stretch behind the head."],
+    ["D2","DB preacher curl",2,8,12,"arm","",60,"Arm over the incline bench back. Full stretch; last set to failure + lengthened partials."]
+  ]},
+  la: { name: "Lower A", focus: "Quads & hamstrings", lower: true, ex: [
+    ["A","Leg curl machine – heavy",2,6,8,"","",90,"Done first so hamstrings are fresh. Slow lowering, full stretch."],
+    ["B1","Heel-elevated DB goblet squat",3,8,12,"","first",90,"Heels on a plate. Upright torso, knees forward, full depth. Two DBs at the shoulders once one is too light."],
+    ["B2","Single-leg DB calf raise",3,8,12,"leg","",60,"On a step. Pause 1–2 s in the deep stretch. No bouncing."],
+    ["C1","DB Romanian deadlift",3,8,10,"","",90,"Hips back, DBs close to legs. Stop when hamstrings max out, not your lower back."],
+    ["C2","Kneeling cable crunch",3,10,12,"","",60,"Curl ribs toward pelvis. Don't just hinge at the hips."],
+    ["D1","Cable leg extension",2,10,15,"leg","",30,"Ankle strap, sit on the bench. Lean back slightly, squeeze at the top. Last set to failure."],
+    ["D2","Cable hip adduction",2,10,12,"leg","",45,"Ankle strap, standing. Start from a wide stretch, sweep across the body."]
+  ]},
+  ub: { name: "Upper B", focus: "Shoulders, back width & arms", lower: false, ex: [
+    ["A1","Seated DB shoulder press",3,8,10,"","first",90,"Bench nearly upright. Lower to about ear level, press slightly in."],
+    ["A2","Lat pulldown – 2 grips",3,10,12,"","",120,"Sets 1–2 medium overhand, set 3 close underhand. Elbows to hips."],
+    ["B1","Chest press machine",3,8,10,"","",60,"Handles at mid-chest. Full stretch, no bouncing."],
+    ["B2","Seated row machine – wide",3,10,12,"","",90,"Wide grip, elbows flared, pull to the upper chest."],
+    ["C1","Cable Y-raise",3,12,15,"","plus",45,"Both arms, low pulleys crossed. Last set: drop ~30% and continue to failure."],
+    ["C2","Cable reverse fly",3,12,15,"","plus",60,"High pulleys crossed. Arms wide; think push out, not pull back."],
+    ["D1","DB skull crusher",3,10,15,"","",45,"Lying on the bench. DBs beside the head, slight elbow drift back for the stretch."],
+    ["D2","Incline DB curl",2,10,15,"","",60,"Arms hang behind the body. Last set to failure + lengthened partials."]
+  ]},
+  lb: { name: "Lower B", focus: "Glutes & hamstrings", lower: true, ex: [
+    ["A1","DB Bulgarian split squat",3,8,10,"leg","first",60,"Long stride, slight forward lean for glutes. Control the bottom. Straps if grip fails."],
+    ["A2","Seated DB calf raise",3,12,15,"","",90,"DB on the knees, balls of feet on a plate. Pause in the stretch."],
+    ["B1","Leg curl machine",3,10,12,"","plus",60,"Lean forward if seated. Last set: drop set."],
+    ["B2","DB hip thrust",2,10,15,"","",90,"Upper back on the bench, chin tucked, ribs down. 1 s squeeze at lockout."],
+    ["C1","Cable pull-through",2,12,15,"","",45,"Rope, low pulley. Hips back, then drive them through."],
+    ["C2","Lying leg raise",3,10,15,"","",60,"On the bench. Curl the pelvis up at the top; lower back stays down."],
+    ["D1","Cable leg extension",2,12,15,"leg","",30,"Lighter and higher-rep than Lower A. Last set: drop set."],
+    ["D2","Cable hip abduction",2,12,15,"leg","",45,"Ankle strap, standing. Lean forward slightly for upper glute."]
+  ]}
+};
+const ORDER = ["ua","la","ub","lb"];
+const WEEKDAY_SPLIT = { 1: "ua", 2: "la", 4: "ub", 5: "lb" }; // Mon, Tue, Thu, Fri
+const DELOADS = [12,24,36,52];
+const blockOf = w => w <= 12 ? 1 : w <= 24 ? 2 : w <= 36 ? 3 : 4;
+const isDeload = w => DELOADS.includes(w);
+function setsFor(w, base, role) {
+  const b = blockOf(w); let s = base;
+  if ((b === 2 || b === 4) && role === "plus") s += 1;
+  if (b === 3 && role === "first") s = 4;
+  if (isDeload(w)) s = Math.ceil(s / 2);
+  return s;
+}
+function blockNote(w) {
+  if (isDeload(w)) return "<b>Deload week.</b> Half the sets, about 70% of your usual weights, stop 3–4 reps short of failure.";
+  if (w === 48) return "<b>Test week.</b> On the first lift, take one set to a true rep max.";
+  const b = blockOf(w);
+  if (b === 1) return w <= 2 ? "<b>Weeks 1–2.</b> Leave 2–3 reps in reserve while you find your working weights."
+    : "<b>Block 1.</b> Compounds: 1–2 reps in reserve. Isolations: last set to failure.";
+  if (b === 2) return "<b>Block 2.</b> Extra set on marked moves. After failure on an isolation's last set, add 4–6 lengthened partials.";
+  if (b === 3) return "<b>Block 3.</b> First lift: 4 heavy sets at the low end of its rep range.";
+  return "<b>Block 4.</b> Last set of every isolation: failure + partials or a drop set.";
+}
+const sid = (w, d) => `w${String(w).padStart(2,"0")}-${d}`;
+function dayExercises(w, d) {
+  return DAYS[d].ex.map(([code,name,base,lo,hi,side,role,rest,cue]) => ({ code, name, sets: setsFor(w, base, role), lo, hi, side, role, rest, cue }));
+}
+function groupsOf(exs) { const g = []; for (const e of exs) { const k = e.code[0]; let x = g.find(y => y.key === k); if (!x) g.push(x = { key: k, ex: [] }); x.ex.push(e); } return g; }
+
+/* ===================== DATES ===================== */
+const pad = x => String(x).padStart(2, "0");
+const iso = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const parse = s => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
+const todayISO = () => iso(new Date());
+function mondayOf(d) { const x = new Date(d); const k = (x.getDay() + 6) % 7; x.setDate(x.getDate() - k); return x; }
+function nextMonday() { const t = new Date(); const k = (t.getDay() + 6) % 7; const x = new Date(t); x.setDate(t.getDate() + (k === 0 ? 0 : 7 - k)); return x; }
+function niceDate(s) { return parse(s).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }); }
+function planFor(dateStr) {
+  const start = mondayOf(parse(settings.startDate));
+  const diff = Math.round((mondayOf(parse(dateStr)) - start) / 86400000);
+  const week = Math.floor(diff / 7) + 1;
+  const dow = parse(dateStr).getDay();
+  return { week, day: WEEKDAY_SPLIT[dow] || null, dow };
+}
+
+/* ===================== STATE & STORAGE ===================== */
+const sessions = new Map(), bodyweight = new Map();
+let settings = { startDate: "" };
+let db = null, downloads = null, mode = "connecting", loaded = false;
+const nav = { screen: "loading", stack: [] };
+const run = { week: 0, day: "", date: "", s: null, order: [], cur: 0, restEnd: 0, restTotal: 0, tick: null };
+
+function setSync(state, text) { document.getElementById("syncDot").className = "dot " + (state || ""); document.getElementById("syncText").textContent = text; }
+const LS_KEY = "session-coach-v1";
+function lsLoad() { try { const j = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); for (const [k,v] of Object.entries(j.s||{})) sessions.set(k,v); for (const [k,v] of Object.entries(j.b||{})) bodyweight.set(k,v); if (j.settings) settings = j.settings; } catch (e) {} }
+function lsSave() { try { localStorage.setItem(LS_KEY, JSON.stringify({ s: Object.fromEntries(sessions), b: Object.fromEntries(bodyweight), settings })); } catch (e) {} }
+
+const pending = new Map(), inflight = new Set(), wtimers = new Map();
+function queueWrite(path, body) {
+  if (mode !== "db") { lsSave(); return; }
+  pending.set(path, body); setSync("busy", "Saving…");
+  clearTimeout(wtimers.get(path)); wtimers.set(path, setTimeout(() => flush(path), 600));
+}
+async function flush(path) {
+  if (inflight.has(path)) { wtimers.set(path, setTimeout(() => flush(path), 400)); return; }
+  const body = pending.get(path); if (!body) return;
+  pending.delete(path); inflight.add(path);
+  try { await db.doc(path).set(JSON.parse(JSON.stringify(body))); if (!pending.size && inflight.size === 1) setSync("ok", "Saved"); }
+  catch (e) {
+    if (e && e.code === "unavailable") { if (!pending.has(path)) pending.set(path, body); setTimeout(() => flush(path), 1500 + Math.random()*1000); }
+    else setSync("err", "Not saved: " + (e && e.code || "error"));
+  } finally { inflight.delete(path); }
+}
+function saveRun() {
+  const s = run.s; s.updatedAt = new Date().toISOString(); if (!s.date) s.date = run.date;
+  sessions.set(sid(run.week, run.day), JSON.parse(JSON.stringify(s)));
+  queueWrite("sessions/" + sid(run.week, run.day), s);
+}
+function saveSettings() { queueWrite("meta/settings", settings); if (mode !== "db") lsSave(); }
+
+function loadSession(w, d) {
+  const prev = sessions.get(sid(w, d));
+  const s = prev ? JSON.parse(JSON.stringify(prev)) : { week: w, day: d, date: "", done: false, ex: {} };
+  for (const e of dayExercises(w, d)) {
+    const cur = s.ex[e.code] || { sets: [], notes: "" };
+    while (cur.sets.length < e.sets) cur.sets.push({ lb: "", reps: "", done: false });
+    s.ex[e.code] = cur;
+  }
+  return s;
+}
+
+/* ===================== LOGIC ===================== */
+const n = v => (v === "" || v == null || isNaN(+v)) ? null : +v;
+const anyLogged = s => Object.values(s.ex || {}).some(x => (x.sets||[]).some(t => n(t.reps) != null));
+function e1rm(sets) { let m = 0; for (const t of sets || []) { const lb = n(t.lb), r = n(t.reps); if (lb != null && r != null && r > 0) m = Math.max(m, lb * (1 + r/30)); } return m ? Math.round(m) : null; }
+function previous(w, d, code) {
+  for (let k = w - 1; k >= 1; k--) {
+    const s = sessions.get(sid(k, d)); if (!s || isDeload(k)) continue;
+    const x = s.ex && s.ex[code]; if (x && (x.sets||[]).some(t => n(t.reps) != null)) return { week: k, sets: x.sets.filter(t => n(t.reps) != null) };
+  }
+  return null;
+}
+function advice(prev, e, lower, w) {
+  if (isDeload(w)) return { cls: "same", text: "Deload: about 70% of usual weight, easy reps" };
+  if (!prev) return { cls: "same", text: `First time: choose a weight you can lift for ${e.lo} clean reps` };
+  const reps = prev.sets.map(t => n(t.reps)), top = Math.max(...prev.sets.map(t => n(t.lb) || 0));
+  if (reps.every(r => r >= e.hi)) return { cls: "up", text: `▲ Add weight: try ${top + (lower ? 10 : 5)} lb` };
+  if (reps.some(r => r < e.lo)) return { cls: "down", text: `▼ Last time was too heavy: try ${Math.round(top * 0.95 / 2.5) * 2.5} lb` };
+  return { cls: "same", text: `Same weight (${top} lb), beat last time's reps` };
+}
+function buildOrder(w, d, s) {
+  const out = [];
+  for (const g of groupsOf(dayExercises(w, d))) {
+    const max = Math.max(...g.ex.map(e => s.ex[e.code].sets.length));
+    for (let i = 0; i < max; i++) for (const e of g.ex) if (i < s.ex[e.code].sets.length) out.push({ e, i });
+  }
+  return out;
+}
+const firstUndone = () => run.order.findIndex(o => !run.s.ex[o.e.code].sets[o.i].done);
+const doneCount = () => run.order.filter(o => run.s.ex[o.e.code].sets[o.i].done).length;
+const round25 = v => Math.round(v / 5) * 5;          // nearest 5 lb (dumbbell/stack steps)
+const downTo5 = v => Math.max(5, Math.floor(v / 5) * 5); // a real lighter option
+const stepFor = e => (DAYS[run.day].lower && /machine/i.test(e.name)) ? 10 : 5;
+// Recommended weight + reps for a set, from last time's numbers (double progression)
+function recommend(o) {
+  const e = o.e, x = run.s.ex[e.code];
+  // In-workout autoregulation: react to the most recent completed set of this exercise today
+  let k0 = -1; for (let k = o.i - 1; k >= 0; k--) if (x.sets[k].done && n(x.sets[k].reps) != null) { k0 = k; break; }
+  if (k0 >= 0 && !isDeload(run.week)) {
+    const lw = n(x.sets[k0].lb), lr = n(x.sets[k0].reps), setNo = k0 + 1, s = stepFor(e);
+    if (lr < e.lo) {
+      const f = lr <= e.lo - 3 ? 0.9 : 0.95;
+      const nw = lw != null ? Math.min(downTo5(lw * f), lw - 5 > 0 ? lw - 5 : lw) : null;
+      return { lb: nw != null ? String(nw) : "", reps: String(e.lo), cls: "down",
+        why: `▼ Adjusted: set ${setNo} fell short (${lr} reps)${nw != null ? `, so drop to ${nw} lb` : ""}` };
+    }
+    if (lr >= e.hi + 2) {
+      return { lb: lw != null ? String(lw + s) : "", reps: String(Math.min(e.hi, Math.max(e.lo, lr - 3))), cls: "up",
+        why: `▲ Adjusted: set ${setNo} beat the range (${lr} reps), so +${s} lb` };
+    }
+    return { lb: lw != null ? String(lw) : "", reps: String(Math.min(e.hi, lr)), cls: "same",
+      why: `Same weight as set ${setNo}; match the ${Math.min(e.hi, lr)} reps you just got` };
+  }
+  let sessW = null; // a weight already used earlier in this session wins
+  for (let k = o.i - 1; k >= 0; k--) if (n(x.sets[k].lb) != null) { sessW = x.sets[k].lb; break; }
+  const prev = previous(run.week, run.day, e.code);
+  if (!prev) return { lb: sessW ?? "", reps: "", cls: "same", why: `First time: choose a weight you can lift for ${e.lo} clean reps. Next session will be prefilled.` };
+  const reps = prev.sets.map(t => n(t.reps)), top = Math.max(...prev.sets.map(t => n(t.lb) || 0));
+  const lastSet = prev.sets[o.i] || prev.sets[prev.sets.length - 1];
+  let lb, r, cls, why;
+  if (isDeload(run.week)) { lb = top ? round25(top * 0.7) : ""; r = e.lo; cls = "same"; why = "Deload: about 70% of your usual weight, easy reps"; }
+  else if (reps.every(v => v >= e.hi)) { const s = stepFor(e); lb = top ? top + s : ""; r = e.lo; cls = "up"; why = `▲ You hit ${e.hi}+ on every set last time, so +${s} lb`; }
+  else if (reps.some(v => v < e.lo)) { lb = top ? Math.min(downTo5(top * 0.95), top - 5 > 0 ? top - 5 : top) : ""; r = e.lo; cls = "down"; why = `▼ A set fell below ${e.lo} reps last time, so a little lighter`; }
+  else { lb = top || ""; r = Math.min(e.hi, (n(lastSet.reps) ?? e.lo) + 1); cls = "same"; why = "Same weight, aim for 1 more rep than last time"; }
+  if (blockOf(run.week) === 3 && e.role === "first" && !isDeload(run.week)) r = e.lo;
+  return { lb: sessW ?? String(lb), reps: String(r), cls, why };
+}
+function suggestedWeight(o) { const x = run.s.ex[o.e.code]; return n(x.sets[o.i].lb) != null ? x.sets[o.i].lb : recommend(o).lb; }
+function earliestUnfinished(upToWeek) {
+  for (let w = Math.max(1, upToWeek); w >= 1 && w >= upToWeek; w--) for (const d of ORDER) { const s = sessions.get(sid(w, d)); if (!s || !s.done) return { week: w, day: d }; }
+  return null;
+}
+
+/* ===================== AUDIO / WAKE / FULLSCREEN ===================== */
+let actx = null, wake = null;
+function unlock() { try { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === "suspended") actx.resume(); } catch (e) {} }
+function beep(times = 3) {
+  if (!actx) return;
+  try { for (let i = 0; i < times; i++) { const o = actx.createOscillator(), g = actx.createGain(); o.frequency.value = i === times-1 ? 1175 : 880; const t0 = actx.currentTime + i*0.28;
+    g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.4, t0+0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0+0.22); o.connect(g).connect(actx.destination); o.start(t0); o.stop(t0+0.25); } } catch (e) {}
+}
+async function keepAwake() { try { if ("wakeLock" in navigator && !wake) { wake = await navigator.wakeLock.request("screen"); wake.addEventListener("release", () => { wake = null; }); } } catch (e) {} }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && (nav.screen === "set" || nav.screen === "rest")) keepAwake(); });
+const fsEl = document.documentElement;
+const canFS = !!(fsEl.requestFullscreen || fsEl.webkitRequestFullscreen);
+const isFS = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+async function toggleFS() {
+  try {
+    if (isFS()) { await (document.exitFullscreen || document.webkitExitFullscreen).call(document); }
+    else { const r = (fsEl.requestFullscreen || fsEl.webkitRequestFullscreen).call(fsEl); if (r && r.then) await r; }
+  } catch (e) { showFSHelp(); }
+  setTimeout(updateFSBtn, 300);
+}
+function updateFSBtn() { const b = document.getElementById("fsBtn"); b.hidden = !canFS; b.textContent = isFS() ? "Exit full screen" : "Full screen"; }
+document.addEventListener("fullscreenchange", updateFSBtn); document.addEventListener("webkitfullscreenchange", updateFSBtn);
+function showFSHelp() { go("fshelp"); }
+
+/* ===================== RENDER ===================== */
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const stage = document.getElementById("stage");
+const bottom = document.getElementById("bottom");
+let homeDate = null, resetTarget = null;
+const warm = [false, false, false];
+
+function go(screen, push = true) { if (push && nav.screen !== screen) nav.stack.push(nav.screen); nav.screen = screen; render(); }
+function back() { const prev = nav.stack.pop() || "home"; nav.screen = prev; render(); }
+function setNav(active) { document.querySelectorAll(".tb-link").forEach(a => a.classList.toggle("on", a.dataset.nav === active)); }
+function bar(html) { bottom.innerHTML = html || ""; bottom.hidden = !html; }
+
+function render() {
+  updateFSBtn();
+  if (nav.screen !== "rest") stopRestTick();
+  const S = nav.screen;
+  setNav({ history: "history", body: "body", rules: "rules", menu: "more", setup: "more", fshelp: "more" }[S] || "workouts");
+  ({ loading: rLoading, setup: rSetup, home: rHome, deck: rDeck, set: rSet, rest: rRest, browse: rBrowse, summary: rSummary,
+     reset: rReset, menu: rMenu, history: rHistory, body: rBody, rules: rRules, fshelp: rFSHelp }[S] || rHome)();
+  stage.scrollTop = 0;
+}
+const counts = (w, d) => {
+  const s = sessions.get(sid(w, d)); const plan = dayExercises(w, d).reduce((a, e) => a + e.sets, 0);
+  let done = 0; if (s) for (const x of Object.values(s.ex || {})) done += (x.sets || []).filter(t => t.done).length;
+  return { left: Math.max(0, plan - done), done, finished: !!(s && s.done) };
+};
+
+function rLoading() { bar(""); stage.innerHTML = `<div class="page center"><p class="muted">Loading…</p></div>`; }
+
+function rSetup() {
+  bar("");
+  const def = settings.startDate || iso(nextMonday());
+  stage.innerHTML = `<div class="page center narrow">
+    <h1 class="title">Set up</h1>
+    <p>Pick the Monday you start (or started) Week 1. It's used to work out which workout falls on any date.</p>
+    <p><input type="date" class="input" id="startDate" value="${def}" aria-label="Program start date"></p>
+    <p class="muted small">Mon Upper A · Tue Lower A · Thu Upper B · Fri Lower B</p>
+    <p><button class="abtn primary wide" id="saveStart">Save</button></p>
+  </div>`;
+  document.getElementById("saveStart").onclick = () => {
+    const v = document.getElementById("startDate").value; if (!v) return;
+    settings.startDate = iso(mondayOf(parse(v))); saveSettings(); nav.stack = []; go("home", false);
+  };
+}
+
+/* Home = deck list */
+function rHome() {
+  bar("");
+  if (!homeDate) homeDate = todayISO();
+  const p = planFor(homeDate);
+  const dateRow = `<div class="daterow"><input type="date" class="input" id="dateSel" value="${homeDate}" aria-label="Date">
+    ${homeDate !== todayISO() ? `<button class="linkbtn" id="todayBtn">Today</button>` : ""}</div>`;
+  let body;
+  if (p.week < 1) body = `<p class="center-text">Week 1 begins ${esc(niceDate(settings.startDate))}.</p>`;
+  else if (p.week > 52) body = `<p class="center-text">All 52 weeks are complete. See History for your progress.</p>`;
+  else {
+    const dows = { ua: 1, la: 2, ub: 4, lb: 5 };
+    let rows = "", logged = 0;
+    for (const d of ORDER) {
+      const c = counts(p.week, d); logged += c.done;
+      const isToday = p.day === d;
+      rows += `<tr class="${isToday ? "current" : ""}" data-open="${p.week}:${d}" tabindex="0">
+        <td class="deckname">${isToday ? "<span class='arrow'>▸</span>" : ""}${DAYS[d].name}<span class="small muted"> · ${["","Mon","Tue","","Thu","Fri"][dows[d]]}</span></td>
+        <td class="n new num">${c.finished ? "0" : c.left}</td><td class="n due num">${c.done}</td>
+        <td class="n">${c.finished ? "✓" : ""}</td></tr>`;
+    }
+    body = `<table class="decks"><thead><tr><th>Week ${p.week}${isDeload(p.week) ? " · deload" : p.week === 48 ? " · test" : ""} · Block ${blockOf(p.week)}</th><th class="n">Left</th><th class="n">Done</th><th class="n"></th></tr></thead><tbody>${rows}</tbody></table>
+      <p class="center-text muted small">${p.day ? `Today: ${DAYS[p.day].name}.` : "Rest day: walk, stretch, eat your protein."} Logged ${logged} set${logged === 1 ? "" : "s"} this week.</p>`;
+  }
+  stage.innerHTML = `<div class="page">${dateRow}${body}</div>`;
+  document.getElementById("dateSel").onchange = ev => { if (ev.target.value) { homeDate = ev.target.value; rHome(); } };
+  const tb = document.getElementById("todayBtn"); if (tb) tb.onclick = () => { homeDate = todayISO(); rHome(); };
+  stage.querySelectorAll("[data-open]").forEach(r => { const open = () => { const [w, d] = r.dataset.open.split(":"); openDeck(+w, d); }; r.onclick = open; r.onkeydown = e => { if (e.key === "Enter") open(); }; });
+}
+
+/* Overview = deck overview */
+function openDeck(w, d) {
+  run.week = w; run.day = d; run.date = homeDate || todayISO();
+  run.s = loadSession(w, d); run.order = buildOrder(w, d, run.s);
+  nav.stack = ["home"]; go("deck", false);
+}
+function rDeck() {
+  const w = run.week, d = run.day, D = DAYS[d], c = counts(w, d);
+  const started = anyLogged(run.s) && !run.s.done;
+  bar("");
+  const items = ["5 min easy cardio, until you break a light sweat",
+    D.lower ? "Leg swings, front-to-back and side-to-side, 10 each" : "Arm circles and band pull-aparts, 15 each",
+    "Ramp-up sets on the first lift: ~50% × 8, 70% × 4, 85% × 2"];
+  stage.innerHTML = `<div class="page center narrow">
+    <h1 class="title">${D.name}</h1>
+    <p class="muted">${D.focus} · Week ${w} · Block ${blockOf(w)}${isDeload(w) ? " · Deload" : w === 48 ? " · Test week" : ""}</p>
+    <table class="ovcounts"><tr><td>Sets left:</td><td class="new num">${c.finished ? 0 : c.left}</td></tr><tr><td>Done:</td><td class="due num">${c.done}</td></tr></table>
+    <p class="small">${blockNote(w)}</p>
+    <button class="abtn primary wide" id="studyNow">${run.s.done ? "Review Workout" : started ? "Resume Workout" : "Start Workout"}</button>
+    <details class="warm"><summary>Warm-up · 5–8 min</summary>
+      ${items.map((t, i) => `<label class="warmitem"><input type="checkbox" data-w="${i}" ${warm[i] ? "checked" : ""}> ${t}</label>`).join("")}
+    </details>
+    ${anyLogged(run.s) || run.s.done ? `<p><button class="linkbtn" data-reset="${w}:${d}">Reset this workout</button></p>` : ""}
+  </div>`;
+  stage.querySelectorAll("[data-w]").forEach(cb => cb.onchange = () => { warm[+cb.dataset.w] = cb.checked; });
+  document.getElementById("studyNow").onclick = () => {
+    unlock(); keepAwake();
+    if (run.s.done) { go("summary"); return; }
+    const fu = firstUndone(); if (fu < 0) { go("summary"); return; }
+    run.cur = fu; go("set");
+  };
+  const rb = stage.querySelector("[data-reset]"); if (rb) rb.onclick = () => { resetTarget = { w, d }; go("reset"); };
+}
+
+/* Reviewer */
+function topCounts() {
+  const left = run.order.length - doneCount(), done = doneCount();
+  return `<div class="revcounts num"><span class="new">${left}</span> <span class="plus">+</span> <span class="due">${done}</span></div>`;
+}
+function rSet() {
+  const o = run.order[run.cur]; if (!o) { go("summary", false); return; }
+  const e = o.e, x = run.s.ex[e.code], t = x.sets[o.i];
+  const partners = [...new Set(run.order.filter(q => q.e.code[0] === e.code[0]).map(q => q.e.code))].filter(c => c !== e.code);
+  const prev = previous(run.week, run.day, e.code);
+  const rec = recommend(o);
+  const lastTxt = prev ? `Week ${prev.week}: ` + prev.sets.map(s => `${n(s.lb) ?? "–"}×${n(s.reps)}`).join(", ") : "";
+  const wVal = t.lb !== "" && t.lb != null ? t.lb : rec.lb;
+  const rVal = t.reps !== "" && t.reps != null ? t.reps : rec.reps;
+  stage.innerHTML = `${topCounts()}<div class="card">
+    <div class="front">
+      <div class="deckpath small muted">${DAYS[run.day].name} › ${e.code}${partners.length ? ` (superset with ${partners.join(", ")})` : ""}</div>
+      <div class="q">${esc(e.name)}</div>
+      <div class="qsub num">Set ${o.i + 1} of ${x.sets.length} · ${e.lo}–${e.hi} reps${e.side ? ` per ${e.side}` : ""}</div>
+    </div>
+    <hr id="answer">
+    <div class="back">
+      <div class="rec ${rec.cls}">${esc(rec.why)}</div>
+      <div class="entry">
+        <div class="ent"><div class="lbl">Weight (lb)${/DB/.test(e.name) ? " per dumbbell" : ""}</div>
+          <div class="stepper"><button data-step="lb:-1" aria-label="Less weight">−</button><input id="inLb" class="typeans num" inputmode="decimal" value="${esc(wVal)}" placeholder="–"><button data-step="lb:1" aria-label="More weight">+</button></div></div>
+        <div class="ent"><div class="lbl">Reps</div>
+          <div class="stepper"><button data-step="reps:-1" aria-label="Fewer reps">−</button><input id="inReps" class="typeans num" inputmode="numeric" value="${esc(rVal)}" placeholder="${e.lo}"><button data-step="reps:1" aria-label="More reps">+</button></div></div>
+      </div>
+      <div class="cue">${esc(e.cue)}</div>
+      ${lastTxt ? `<div class="small muted num">Last time · ${esc(lastTxt)}</div>` : ""}
+    </div>
+  </div>`;
+  bar(`<div class="bb-side"><button class="abtn" id="moreBtn">Exercises</button></div>
+    <div class="bb-mid">
+      <div class="ab"><span class="ivl">&nbsp;</span><button class="abtn" id="prevSet" ${run.cur === 0 ? "disabled" : ""}>Previous</button></div>
+      <div class="ab"><span class="ivl">&nbsp;</span><button class="abtn" id="skipSet">Skip</button></div>
+      <div class="ab"><span class="ivl num">${t.done ? "save" : "rest " + restText(e.rest)}</span><button class="abtn primary" id="doneSet">Done</button></div>
+    </div>
+    <div class="bb-side right"><button class="abtn" id="exitBtn">Close</button></div>`);
+  const inLb = document.getElementById("inLb"), inReps = document.getElementById("inReps");
+  stage.querySelectorAll("[data-step]").forEach(b => b.onclick = () => {
+    unlock();
+    const [k, dir] = b.dataset.step.split(":"); const inp = k === "lb" ? inLb : inReps;
+    let v = n(inp.value);
+    if (v == null) v = n(inp.placeholder) ?? (k === "lb" ? 0 : e.lo);
+    else v = Math.max(0, v + (+dir) * (k === "lb" ? (DAYS[run.day].lower ? 5 : 2.5) : 1));
+    inp.value = v;
+  });
+  document.getElementById("doneSet").onclick = () => {
+    unlock();
+    if (inReps.value.trim() === "") inReps.value = inReps.placeholder;
+    t.lb = inLb.value.replace(",", ".").trim(); t.reps = inReps.value.trim(); const wasDone = t.done; t.done = true;
+    saveRun();
+    const nx = firstUndone();
+    if (wasDone) { if (nx >= 0) run.cur = nx; go(nx < 0 ? "summary" : "set", false); return; }
+    if (nx < 0) { go("summary", false); return; }
+    run.cur = nx; startRest(e.rest);
+  };
+  document.getElementById("prevSet").onclick = () => { if (run.cur > 0) { run.cur--; rSet(); } };
+  document.getElementById("skipSet").onclick = () => { const nx = run.order.findIndex((q, i) => i > run.cur && !run.s.ex[q.e.code].sets[q.i].done); if (nx >= 0) { run.cur = nx; rSet(); } else go("summary", false); };
+  document.getElementById("moreBtn").onclick = () => go("browse");
+  document.getElementById("exitBtn").onclick = () => { nav.stack = ["home"]; go("deck", false); };
+}
+const restText = s => s >= 60 ? `${Math.floor(s / 60)}m${s % 60 ? ` ${s % 60}s` : ""}` : `${s}s`;
+
+function startRest(sec) { run.restTotal = sec; run.restEnd = Date.now() + sec * 1000; go("rest", false); }
+function stopRestTick() { clearInterval(run.tick); run.tick = null; }
+function rRest() {
+  const o = run.order[run.cur], e = o.e, r = recommend(o);
+  stage.innerHTML = `${topCounts()}<div class="card">
+    <div class="front"><div class="deckpath small muted">Rest</div><div class="clock num" id="clock">0:00</div>
+      <div class="restbar"><i id="restFill"></i></div></div>
+    <hr id="answer">
+    <div class="back">
+      <div class="small muted">Up next · ${e.code} · set ${o.i + 1} of ${run.s.ex[e.code].sets.length}</div>
+      <div class="q2">${esc(e.name)}</div>
+      <div class="num">${r.lb !== "" && r.reps !== "" ? `${esc(r.lb)} lb × ${esc(r.reps)}` : `${e.lo}–${e.hi} reps`}${e.side ? ` per ${e.side}` : ""}</div>
+      <div class="cue">${esc(e.cue)}</div>
+    </div>
+  </div>`;
+  bar(`<div class="bb-side"></div><div class="bb-mid">
+      <div class="ab"><span class="ivl">&nbsp;</span><button class="abtn" id="rMinus">−15s</button></div>
+      <div class="ab"><span class="ivl">&nbsp;</span><button class="abtn" id="rPlus">+15s</button></div>
+      <div class="ab"><span class="ivl">&nbsp;</span><button class="abtn primary" id="rSkip">Skip rest</button></div>
+    </div><div class="bb-side right"></div>`);
+  document.getElementById("rMinus").onclick = () => { run.restEnd -= 15000; tickRest(); };
+  document.getElementById("rPlus").onclick = () => { run.restEnd += 15000; run.restTotal += 15; tickRest(); };
+  document.getElementById("rSkip").onclick = () => { run.restEnd = Date.now(); tickRest(); };
+  stopRestTick(); run.tick = setInterval(tickRest, 250); tickRest();
+}
+function tickRest() {
+  const left = (run.restEnd - Date.now()) / 1000, c = document.getElementById("clock"); if (!c) return;
+  if (left <= 0) { stopRestTick(); c.textContent = "Go"; beep(3); setTimeout(() => { if (nav.screen === "rest") go("set", false); }, 700); return; }
+  const s = Math.ceil(left); c.textContent = `${Math.floor(s / 60)}:${pad(s % 60)}`;
+  document.getElementById("restFill").style.width = (100 * (1 - left / run.restTotal)).toFixed(1) + "%";
+}
+
+/* Browse = all exercises table */
+function rBrowse() {
+  const exs = dayExercises(run.week, run.day);
+  stage.innerHTML = `<div class="page"><table class="browse"><thead><tr><th>#</th><th>Exercise</th><th class="n">Sets</th><th class="n">Reps</th><th class="n">Done</th></tr></thead><tbody>
+    ${exs.map(e => { const x = run.s.ex[e.code]; const dn = x.sets.filter(t => t.done).length;
+      const idx = run.order.findIndex(q => q.e.code === e.code && !x.sets[q.i].done);
+      return `<tr data-jump="${idx >= 0 ? idx : run.order.findIndex(q => q.e.code === e.code)}" tabindex="0"><td>${e.code}</td><td>${esc(e.name)}</td><td class="n num">${x.sets.length}</td><td class="n num">${e.lo}–${e.hi}</td><td class="n num ${dn === x.sets.length ? "due" : ""}">${dn}/${x.sets.length}</td></tr>`; }).join("")}
+  </tbody></table></div>`;
+  bar(`<div class="bb-side"><button class="abtn" id="bBack">Back</button></div><div class="bb-mid">
+    <div class="ab"><span class="ivl">&nbsp;</span><button class="abtn primary" id="bFinish">Finish workout</button></div></div>
+    <div class="bb-side right"><button class="abtn" id="bReset">Reset</button></div>`);
+  stage.querySelectorAll("[data-jump]").forEach(r => r.onclick = () => { run.cur = +r.dataset.jump; nav.stack.pop(); nav.screen = "set"; render(); });
+  document.getElementById("bBack").onclick = () => back();
+  document.getElementById("bFinish").onclick = () => go("summary", false);
+  document.getElementById("bReset").onclick = () => { resetTarget = { w: run.week, d: run.day }; go("reset"); };
+}
+
+/* Finished = "Congratulations" screen */
+function rSummary() {
+  let vol = 0; const prs = [];
+  for (const e of dayExercises(run.week, run.day)) {
+    const x = run.s.ex[e.code]; for (const t of x.sets) { const lb = n(t.lb), r = n(t.reps); if (lb != null && r != null) vol += lb * r; }
+    const now = e1rm(x.sets); if (!now) continue;
+    let best = 0; for (let k = 1; k < run.week; k++) { const s = sessions.get(sid(k, run.day)); const y = s && s.ex && s.ex[e.code]; if (y) best = Math.max(best, e1rm(y.sets) || 0); }
+    if (best && now > best) prs.push(e.name);
+  }
+  const left = run.order.length - doneCount();
+  stage.innerHTML = `<div class="page center narrow">
+    ${run.s.done ? `<h1 class="title">Congratulations!</h1><p>You have finished this workout for now.</p>`
+      : left ? `<h1 class="title">${left} set${left > 1 ? "s" : ""} left</h1><p>Finish anyway, or go back to the sets.</p>`
+      : `<h1 class="title">All sets done</h1><p>Save to mark this workout finished.</p>`}
+    <p class="muted num">Logged ${doneCount()} of ${run.order.length} sets · ${vol.toLocaleString()} lb total volume${prs.length ? ` · New best: ${prs.map(esc).join(", ")}` : ""}.</p>
+    ${!canFolder ? `<p><button class="linkbtn" id="saveBackupBtn">Save a backup of your log</button></p><p class="small muted" id="saveBackupMsg"></p>` : ""}
+    ${canFolder ? `<p class="small muted" id="autosaveMsg">${dirHandle ? "" : "Tip: choose an auto-save folder under More to save your logbook to your Mac after every workout."}</p>` : ""}
+    ${run.s.done ? `<p><button class="abtn primary wide" id="homeBtn">Back to workouts</button></p><p><button class="linkbtn" id="editBtn">Edit sets</button></p>`
+      : `<p><button class="abtn primary wide" id="finishBtn">Finish and save</button></p>${left ? `<p><button class="linkbtn" id="resumeBtn">Back to the sets</button></p>` : ""}`}
+  </div>`;
+  bar("");
+  const q = id => document.getElementById(id);
+  if (q("finishBtn")) q("finishBtn").onclick = async () => {
+    run.s.done = true; saveRun();
+    const label = `${DAYS[run.day].name} W${run.week}`;
+    const p = canFolder && dirHandle ? autoSave(label) : null; // started inside the click so the browser allows folder access
+    rSummary();
+    if (p) { const s = document.getElementById("autosaveMsg"); if (s) s.textContent = "Saving to your folder…"; const r = await p; const s2 = document.getElementById("autosaveMsg"); if (s2) s2.textContent = r.msg; }
+  };
+  if (q("saveBackupBtn")) q("saveBackupBtn").onclick = async () => { const m = q("saveBackupMsg"); try { await saveFile(`Gym log backup ${todayISO()}.json`, backupJSON(), "application/json"); m.textContent = "Backup saved."; } catch (e) { m.textContent = e && e.code === "declined" ? "Backup cancelled." : "Couldn't save the backup."; } };
+  if (q("homeBtn")) q("homeBtn").onclick = () => { nav.stack = []; go("home", false); };
+  if (q("editBtn")) q("editBtn").onclick = () => go("browse");
+  if (q("resumeBtn")) q("resumeBtn").onclick = () => { run.cur = Math.max(0, firstUndone()); go("set", false); };
+}
+
+/* Reset confirm */
+const progressCount = s => Object.values(s.ex || {}).reduce((a, x) => a + (x.sets || []).filter(t => n(t.reps) != null).length, 0);
+function rReset() {
+  const t = resetTarget; if (!t) { back(); return; }
+  const s = sessions.get(sid(t.w, t.d)); const p = s ? progressCount(s) : 0;
+  bar("");
+  stage.innerHTML = `<div class="page center narrow">
+    <h1 class="title">Reset ${DAYS[t.d].name}, Week ${t.w}?</h1>
+    <p>This clears ${p} logged set${p === 1 ? "" : "s"} and notes and marks the workout unfinished. It can't be undone.</p>
+    <p><button class="abtn danger wide" id="confirmReset">Reset workout</button></p>
+    <p><button class="linkbtn" id="cancelReset">Cancel</button></p>
+  </div>`;
+  document.getElementById("cancelReset").onclick = () => back();
+  document.getElementById("confirmReset").onclick = async (ev) => {
+    ev.currentTarget.disabled = true;
+    const id = sid(t.w, t.d), path = "sessions/" + id;
+    clearTimeout(wtimers.get(path)); pending.delete(path); sessions.delete(id);
+    if (run.week === t.w && run.day === t.d) { run.s = loadSession(t.w, t.d); run.order = buildOrder(t.w, t.d, run.s); run.cur = 0; }
+    if (mode === "db") { setSync("busy", "Saving…"); try { await db.doc(path).delete(); setSync("ok", "Synced"); } catch (e) { setSync("err", "Reset not saved"); } }
+    else lsSave();
+    warm.fill(false); resetTarget = null; nav.stack = []; go("home", false);
+  };
+}
+
+/* More menu */
+function rMenu() {
+  bar("");
+  stage.innerHTML = `<div class="page narrow">
+    <table class="decks"><tbody>
+      <tr data-go="setup" tabindex="0"><td class="deckname">Program start date</td><td class="n muted small">${settings.startDate ? esc(niceDate(settings.startDate)) : "Not set"}</td></tr>
+      <tr id="exportRow" tabindex="0"><td class="deckname">Export logbook (.xlsx)</td><td class="n muted small" id="exportMsg"></td></tr>
+      ${canFolder ? `<tr id="folderRow" tabindex="0"><td class="deckname">Auto-save folder<div class="small muted">Saves your logbook here every time you finish a workout</div></td><td class="n muted small" id="folderMsg" style="width:auto">${dirHandle ? esc(dirHandle.name) + (lastAutoSave ? " · saved " + esc(lastAutoSave) : "") : "Choose…"}</td></tr>
+      ${dirHandle ? `<tr id="saveNowRow" tabindex="0"><td class="deckname">Save to folder now</td><td class="n muted small" id="saveNowMsg" style="width:auto"></td></tr>` : ""}` : ""}
+      <tr id="backupRow" tabindex="0"><td class="deckname">Back up all data (.json)</td><td class="n muted small" id="backupMsg"></td></tr>
+      <tr id="restoreRow" tabindex="0"><td class="deckname">Restore from a backup</td><td class="n muted small" id="restoreMsg"><input type="file" id="restoreFile" accept=".json,application/json" hidden></td></tr>
+      ${canFS ? `<tr id="fsRow" tabindex="0"><td class="deckname">Full screen</td><td class="n muted small">${isFS() ? "On" : "Off"}</td></tr>` : ""}
+    </tbody></table>
+    <p class="muted small">${mode === "db" ? "Your sets save to your private cloud log as you go." : "This copy saves your sets in this browser on this device."} Back up and restore to move your log between the online app and a local copy. To update your Excel logbook, export here or ask Claude to "sync my logbook."</p></div>`;
+  stage.querySelectorAll("[data-go]").forEach(r => r.onclick = () => go(r.dataset.go));
+  const ex = document.getElementById("exportRow"); if (ex) ex.onclick = () => exportXlsx({ currentTarget: document.getElementById("exportMsg") });
+  document.getElementById("backupRow").onclick = async () => {
+    const msg = document.getElementById("backupMsg");
+    try { await saveFile(`Gym log backup ${todayISO()}.json`, backupJSON(), "application/json"); msg.textContent = "Saved"; }
+    catch (e) { msg.textContent = e && e.code === "declined" ? "Cancelled" : "Failed"; }
+  };
+  const rf = document.getElementById("restoreFile");
+  document.getElementById("restoreRow").onclick = ev => { if (ev.target !== rf) rf.click(); };
+  rf.onchange = async () => {
+    const msg = document.getElementById("restoreMsg"); const f = rf.files && rf.files[0]; if (!f) return;
+    try {
+      const j = JSON.parse(await f.text());
+      if (j.app !== "gym-session-coach" || !j.sessions) throw new Error("not a backup");
+      let k = 0;
+      for (const [id, s] of Object.entries(j.sessions)) { if (!/^w\d\d-(ua|la|ub|lb)$/.test(id)) continue; sessions.set(id, s); queueWrite("sessions/" + id, s); k++; }
+      for (const [id, b] of Object.entries(j.bodyweight || {})) { if (!/^w\d\d$/.test(id)) continue; bodyweight.set(id, b); queueWrite("bodyweight/" + id, b); }
+      if (j.settings && j.settings.startDate) { settings = { ...settings, ...j.settings }; saveSettings(); }
+      if (mode !== "db") lsSave();
+      msg.textContent = `Restored ${k} workouts`;
+    } catch (e) { msg.textContent = "That file isn't a backup from this app"; }
+    rf.value = "";
+  };
+  const fdr = document.getElementById("folderRow");
+  if (fdr) fdr.onclick = async () => { try { await chooseFolder(); const r = await autoSave("first save"); rMenu(); const m = document.getElementById("folderMsg"); if (m && r.msg) m.textContent = r.msg; } catch (e) { /* picker cancelled */ } };
+  const snr = document.getElementById("saveNowRow");
+  if (snr) snr.onclick = async () => { const m = document.getElementById("saveNowMsg"); m.textContent = "Saving…"; const r = await autoSave("manual"); m.textContent = r.msg || "Nothing saved"; };
+  const fr = document.getElementById("fsRow"); if (fr) fr.onclick = () => { unlock(); toggleFS(); setTimeout(rMenu, 400); };
+}
+
+/* Stats */
+const KEY = [["ua","A1"],["ua","A2"],["ua","B2"],["ub","A1"],["ub","B1"],["la","B1"],["la","C1"],["lb","A1"],["la","A"]];
+function spark(vals) {
+  const pts = vals.map((v, i) => [i, v]).filter(p => p[1]);
+  if (pts.length < 2) return `<div class="small muted">${pts.length ? "1 session logged" : "No data yet"}</div>`;
+  const W = 300, H = 56, lo = Math.min(...pts.map(p => p[1])), hi = Math.max(...pts.map(p => p[1])), span = hi - lo || 1;
+  const X = i => 4 + (i / 51) * (W - 8), Y = v => H - 6 - ((v - lo) / span) * (H - 14);
+  const d = pts.map((p, j) => `${j ? "L" : "M"}${X(p[0]).toFixed(1)} ${Y(p[1]).toFixed(1)}`).join(" ");
+  const last = pts[pts.length - 1];
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Trend"><line x1="0" x2="${W}" y1="${H - 6}" y2="${H - 6}" stroke="var(--line)"/><path d="${d} L${X(last[0]).toFixed(1)} ${H} L${X(pts[0][0]).toFixed(1)} ${H} Z" fill="var(--blue)" opacity=".12"/><path d="${d}" fill="none" stroke="var(--blue)" stroke-width="2"/><circle cx="${X(last[0])}" cy="${Y(last[1])}" r="3.5" fill="var(--blue)"/></svg>`;
+}
+function rHistory() {
+  bar("");
+  let h = `<div class="page"><h2 class="section">Strength · best estimated 1RM per week</h2><div class="lifts">`;
+  for (const [d, code] of KEY) {
+    const e = DAYS[d].ex.find(x => x[0] === code);
+    const vals = Array.from({ length: 52 }, (_, i) => { const s = sessions.get(sid(i + 1, d)); return s && s.ex && s.ex[code] ? e1rm(s.ex[code].sets) : null; });
+    const got = vals.filter(Boolean), first = got[0], best = got.length ? Math.max(...got) : null;
+    h += `<div class="lift"><div>${esc(e[1])} <span class="muted small">· ${DAYS[d].name}</span></div><div class="small muted num">${got.length ? `${first} → ${best} lb (${best >= first ? "+" : ""}${Math.round((best / first - 1) * 100)}%)` : "—"}</div>${spark(vals)}</div>`;
+  }
+  h += `</div><h2 class="section">Weeks</h2><div class="weeks">`;
+  for (let w = 1; w <= 52; w++) {
+    h += `<div class="wk"><div class="small">Week ${w}${isDeload(w) ? " · deload" : w === 48 ? " · test" : ""}</div><div class="p">`;
+    for (const d of ORDER) { const s = sessions.get(sid(w, d)); const c = s && s.done ? "done" : (s && anyLogged(s) ? "part" : "");
+      h += `<button class="pip ${c}" data-open="${w}:${d}" aria-label="Week ${w} ${DAYS[d].name}">${DAYS[d].name.replace("Upper ", "U").replace("Lower ", "L")}</button>`; }
+    h += `</div></div>`;
+  }
+  h += `</div><p class="small muted">Green = finished, blue = started. Tap one to open it.</p></div>`;
+  stage.innerHTML = h;
+  stage.querySelectorAll("[data-open]").forEach(b => b.onclick = () => { const [w, d] = b.dataset.open.split(":"); homeDate = homeDate || todayISO(); openDeck(+w, d); });
+}
+function bwVerdict(w) {
+  const g = k => n((bodyweight.get("w" + pad(k)) || {}).avg);
+  const a = g(w), p = g(w - 1);
+  if (a == null || p == null) return `<span class="muted">${w === 1 ? "Baseline" : "—"}</span>`;
+  const ch = (a - p) / p, pct = (ch * 100).toFixed(2) + "%";
+  if (ch < 0.0025) return `<span class="learn">${ch >= 0 ? "+" : ""}${pct} · eat +100–150 kcal</span>`;
+  if (ch > 0.005) return `<span class="learn">+${pct} · cut 100–150 kcal</span>`;
+  return `<span class="due">+${pct} · on target</span>`;
+}
+function rBody() {
+  bar("");
+  const cur = settings.startDate ? planFor(todayISO()).week : 1;
+  let h = `<div class="page"><p class="muted small">Enter your 7-day average morning weight once a week. Target: +0.25–0.5% per week. Act on 2+ weeks in a row, not one blip.</p>
+    <table class="browse"><thead><tr><th>Week</th><th>Avg (lb)</th><th>Waist (in)</th><th>Change</th></tr></thead><tbody>`;
+  for (let w = 1; w <= 52; w++) { const b = bodyweight.get("w" + pad(w)) || {};
+    h += `<tr class="${w === cur ? "current" : ""}"><td>${w}</td><td><input class="input sm" id="bwa-${w}" data-bw="${w}" data-k="avg" inputmode="decimal" value="${esc(b.avg || "")}" aria-label="Week ${w} average"></td><td><input class="input sm" id="bww-${w}" data-bw="${w}" data-k="waist" inputmode="decimal" value="${esc(b.waist || "")}" aria-label="Week ${w} waist"></td><td id="bwv-${w}">${bwVerdict(w)}</td></tr>`; }
+  stage.innerHTML = h + `</tbody></table></div>`;
+  stage.querySelectorAll("input[data-bw]").forEach(inp => inp.oninput = () => {
+    const w = +inp.dataset.bw, id = "w" + pad(w), doc = Object.assign({ week: w, avg: "", waist: "" }, bodyweight.get(id) || {});
+    doc[inp.dataset.k] = inp.value.trim(); doc.updatedAt = new Date().toISOString(); bodyweight.set(id, doc); queueWrite("bodyweight/" + id, doc);
+    document.getElementById("bwv-" + w).innerHTML = bwVerdict(w); const nx = document.getElementById("bwv-" + (w + 1)); if (nx) nx.innerHTML = bwVerdict(w + 1);
+  });
+}
+function rRules() {
+  bar("");
+  stage.innerHTML = `<div class="page narrow">
+    <h2 class="section">Every session</h2><ol>
+      <li><b>Supersets:</b> the app alternates A1 → A2 → A1… and times your rest.</li>
+      <li><b>Effort:</b> compounds 1–2 reps in reserve (last set 0–1). Isolations: last set to failure.</li>
+      <li><b>Prefills:</b> weight and reps come from last time and adjust after every set. Change them to what you actually did.</li>
+      <li><b>Dumbbells:</b> log the weight of one dumbbell. "Per leg / per arm": log one side's reps.</li></ol>
+    <h2 class="section">When the dumbbells get too light (leg days)</h2><ol>
+      <li>Straps on split squats and RDLs.</li><li>Extend to 15–25 reps, still 0–1 in reserve.</li>
+      <li>3-second lowering, 1 s pause at the bottom.</li><li>1.5 reps (down, halfway up, down, all the way up).</li>
+      <li>+1 set of split squats on Lower A if quads lag after Block 1.</li></ol>
+    <h2 class="section">The year</h2><ul>
+      <li>Weeks 1–12 Foundation · 13–24 Volume · 25–36 Strength-hypertrophy · 37–52 Intensification (week 48 test).</li>
+      <li>Deloads in weeks 12, 24, 36, 52. The app halves the sets for you.</li></ul></div>`;
+}
+function rFSHelp() {
+  bar("");
+  stage.innerHTML = `<div class="page center narrow"><h1 class="title">Full screen isn't available here</h1>
+    <p>For the cleanest setup on iPad: open the link in Safari, tap Share, then <b>Add to Home Screen</b>. Set Auto-Lock to Never during workouts.</p>
+    <p><button class="linkbtn" id="fsBack">Back</button></p></div>`;
+  document.getElementById("fsBack").onclick = () => back();
+}
+
+/* ===================== EXPORT ===================== */
+async function saveFile(name, data, mime) {
+  if (downloads) return downloads.save({ filename: name, data });
+  try {
+    const file = new File([data], name, { type: mime });
+    if (navigator.canShare && navigator.canShare({ files: [file] }) && /iPad|iPhone|Macintosh/.test(navigator.userAgent) && "ontouchend" in document) {
+      await navigator.share({ files: [file], title: name }); return { status: "saved" };
+    }
+  } catch (e) { if (e && e.name === "AbortError") { const err = new Error("declined"); err.code = "declined"; throw err; } }
+  const url = URL.createObjectURL(new Blob([data], { type: mime }));
+  const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+  return Promise.resolve({ status: "saved" });
+}
+const STANDALONE = (() => { try { return window.self === window.top && !/claude\.ai$|claudeusercontent|anthropic/.test(location.hostname); } catch (e) { return false; } })();
+function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = () => res(); s.onerror = () => { s.remove(); rej(new Error("load")); }; document.head.appendChild(s); }); }
+async function loadXLSX() {
+  if (window.XLSX) return window.XLSX;
+  const srcs = STANDALONE && location.protocol !== "file:" ? ["xlsx.full.min.js", "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"] : ["https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"];
+  for (const s of srcs) { try { await loadScript(s); if (window.XLSX) return window.XLSX; } catch (e) {} }
+  throw new Error("load");
+}
+async function buildXlsxBytes() {
+  const X = await loadXLSX(), wb = X.utils.book_new();
+  const head = ["Week","Block","Date","#","Exercise","Sets","Rep range","Set 1 lb","Set 1 reps","Set 2 lb","Set 2 reps","Set 3 lb","Set 3 reps","Set 4 lb","Set 4 reps","Best e1RM","Volume (lb)","Next time","Notes"];
+  for (const d of ORDER) {
+    const rows = [head];
+    for (let w = 1; w <= 52; w++) { const s = sessions.get(sid(w,d));
+      for (const e of dayExercises(w, d)) {
+        const x = s && s.ex && s.ex[e.code] || { sets: [], notes: "" }; const cells = []; let vol = 0, logged = 0;
+        for (let i = 0; i < 4; i++) { const t = x.sets[i] || {}; const lb = n(t.lb), r = n(t.reps); cells.push(lb ?? "", r ?? ""); if (lb!=null && r!=null) vol += lb*r; if (r!=null) logged++; }
+        const reps = x.sets.map(t => n(t.reps)).filter(r => r != null);
+        const nt = !logged ? "" : isDeload(w) ? "Deload" : reps.length < e.sets ? "Log all sets" : reps.filter(r => r >= e.hi).length >= e.sets ? "Add weight" : Math.min(...reps) < e.lo ? "Too heavy" : "Add reps";
+        rows.push([w, `B${blockOf(w)}${isDeload(w)?" - DELOAD":w===48?" - TEST":""}`, s && s.date || "", e.code, e.name + (e.side ? ` (per ${e.side})` : ""), e.sets, `${e.lo}-${e.hi}`, ...cells, logged ? e1rm(x.sets) : "", logged ? vol : "", nt, x.notes || ""]);
+      } }
+    const ws = X.utils.aoa_to_sheet(rows); ws["!cols"] = head.map((h,i) => ({ wch: i===4 ? 32 : i===17 ? 14 : 9 }));
+    X.utils.book_append_sheet(wb, ws, DAYS[d].name);
+  }
+  const bw = [["Week","Avg morning weight (lb)","Waist (in)"]]; for (let w = 1; w <= 52; w++) { const b = bodyweight.get("w"+pad(w)) || {}; bw.push([w, n(b.avg) ?? "", n(b.waist) ?? ""]); }
+  X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(bw), "Bodyweight");
+  return new Uint8Array(X.write(wb, { bookType: "xlsx", type: "array" }));
+}
+const backupJSON = () => JSON.stringify({ app: "gym-session-coach", version: 1, exported: new Date().toISOString(), settings, sessions: Object.fromEntries(sessions), bodyweight: Object.fromEntries(bodyweight) }, null, 1);
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+async function exportXlsx(ev) {
+  const btn = ev.currentTarget; btn.disabled = true; btn.textContent = "Building…";
+  try { await saveFile(`Logbook export ${todayISO()}.xlsx`, await buildXlsxBytes(), XLSX_MIME); btn.textContent = "Exported"; }
+  catch (e) { btn.textContent = e && e.code === "declined" ? "Export cancelled" : e && e.message === "load" ? "Needs internet for the Excel library" : "Export failed, try again"; }
+  finally { setTimeout(() => { btn.disabled = false; btn.textContent = "Export logbook (.xlsx)"; }, 2500); }
+}
+
+/* ===================== AUTO-SAVE FOLDER (Mac local copy, Chrome/Edge) ===================== */
+// Only offered when the page runs top-level (not inside claude.ai) and the browser supports folder access.
+const canFolder = (() => { try { return "showDirectoryPicker" in window && window.self === window.top; } catch (e) { return false; } })();
+let dirHandle = null, lastAutoSave = "";
+function idb() { return new Promise((res, rej) => { const r = indexedDB.open("gym-session-coach", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+async function kvGet(k) { try { const d = await idb(); return await new Promise(res => { const q = d.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(null); }); } catch (e) { return null; } }
+async function kvSet(k, v) { try { const d = await idb(); await new Promise(res => { const t = d.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = res; t.onerror = res; }); } catch (e) {} }
+async function chooseFolder() {
+  const h = await window.showDirectoryPicker({ id: "gym-session-coach", mode: "readwrite" });
+  dirHandle = h; await kvSet("dir", h); return h;
+}
+async function ensurePermission() {
+  if (!dirHandle) return false;
+  const opts = { mode: "readwrite" };
+  if (await dirHandle.queryPermission(opts) === "granted") return true;
+  return (await dirHandle.requestPermission(opts)) === "granted"; // needs a click; called from Finish / menu
+}
+async function writeFile(dir, name, data) { const fh = await dir.getFileHandle(name, { create: true }); const w = await fh.createWritable(); await w.write(data); await w.close(); }
+// Keep exactly two versions: the newest, plus the one before it as "(previous)"
+async function writeKeepPrevious(dir, name, data) {
+  const dot = name.lastIndexOf("."), prevName = name.slice(0, dot) + " (previous)" + name.slice(dot);
+  try { const old = await (await dir.getFileHandle(name)).getFile(); if (old.size) await writeFile(dir, prevName, await old.arrayBuffer()); } catch (e) { /* no older copy yet */ }
+  await writeFile(dir, name, data);
+}
+async function autoSave(label) {
+  if (!canFolder || !dirHandle) return { ok: false, msg: "" };
+  try {
+    if (!(await ensurePermission())) return { ok: false, msg: "Folder access wasn't allowed, so nothing was saved." };
+    await writeKeepPrevious(dirHandle, "Gym Session Coach - Backup.json", backupJSON());
+    let xlsxNote = "";
+    try { await writeKeepPrevious(dirHandle, "Gym Session Coach - Logbook.xlsx", await buildXlsxBytes()); }
+    catch (e) { xlsxNote = " (Excel file skipped: needs internet)"; }
+    lastAutoSave = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    return { ok: true, msg: `Saved to “${dirHandle.name}”${xlsxNote}.` };
+  } catch (e) { return { ok: false, msg: "Couldn't save to the folder: " + (e && e.message || "error") }; }
+}
+if (canFolder) kvGet("dir").then(h => { if (h) dirHandle = h; });
+
+/* ===================== WIRING & BOOT ===================== */
+document.querySelector(".tb-links").addEventListener("click", ev => {
+  const b = ev.target.closest("[data-nav]"); if (!b) return; unlock();
+  const t = b.dataset.nav;
+  if (t === "workouts") { nav.stack = []; homeDate = homeDate || todayISO(); go(settings.startDate ? "home" : "setup", false); return; }
+  if (t === "more") { nav.stack = []; go("menu", false); return; }
+  nav.stack = []; go(t, false);
+});
+if (STANDALONE && (location.protocol === "https:" || location.hostname === "localhost") && "serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+}
+function enterApp() { nav.stack = []; go(settings.startDate ? "home" : "setup", false); }
+render();
+(async function boot() {
+  const fallback = setTimeout(() => { if (!loaded) { loaded = true; mode = "local"; lsLoad(); setSync(STANDALONE ? "ok" : "err", STANDALONE ? "Saved on this iPad" : "Saving on this device only"); enterApp(); } }, 10000);
+  try {
+    const waitTries = (location.protocol === "file:" || STANDALONE) ? 0 : 50;
+    for (let i = 0; i < waitTries && !(window.claude && typeof window.claude.use === "function"); i++) await new Promise(r => setTimeout(r, 100));
+    if (window.claude && typeof window.claude.use === "function") [db, downloads] = await Promise.all([window.claude.use("db"), window.claude.use("downloads")]);
+  } catch (e) { db = null; }
+  if (!db) { if (!loaded) { loaded = true; clearTimeout(fallback); mode = "local"; lsLoad(); setSync(STANDALONE ? "ok" : "err", STANDALONE ? "Saved on this device" : "Saving on this device only"); enterApp(); } return; }
+  mode = "db";
+  let gS = false, gB = false, gM = false;
+  const ready = () => { if (gS && gB && gM && !loaded) { loaded = true; clearTimeout(fallback); setSync("ok", "Synced"); enterApp(); } };
+  db.collection("sessions").onSnapshot(snap => {
+    for (const ch of snap.docChanges()) { if (ch.type === "removed") sessions.delete(ch.doc.id); else sessions.set(ch.doc.id, ch.doc.data()); }
+    if (!snap.metadata.fromCache) { gS = true; ready(); }
+  }, err => setSync("err", "Sync error: " + (err && err.code)));
+  db.collection("bodyweight").onSnapshot(snap => {
+    for (const ch of snap.docChanges()) { if (ch.type === "removed") bodyweight.delete(ch.doc.id); else bodyweight.set(ch.doc.id, ch.doc.data()); }
+    if (!snap.metadata.fromCache) { gB = true; ready(); }
+  }, err => setSync("err", "Sync error: " + (err && err.code)));
+  db.doc("meta/settings").onSnapshot(snap => {
+    if (snap.exists) { const d = snap.data(); if (d && d.startDate) settings = { ...settings, ...d }; }
+    if (!snap.metadata.fromCache) { gM = true; ready(); }
+  }, err => setSync("err", "Sync error: " + (err && err.code)));
+})();
+})();
+</script>
+</body>
+</html>
